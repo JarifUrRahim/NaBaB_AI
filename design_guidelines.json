@@ -1,0 +1,115 @@
+{
+  "theme": "LIGHT",
+  "archetype": "5 (Luxury) mixed with 1 (Organic & Earthy)",
+  "brand": {
+    "name": "NaBaB",
+    "tagline_bangla": "বাঙ্গালী বাবা, দেবেন সেবা",
+    "tagline_english": "Bengali Father, Shall Serve"
+  },
+  "typography": {
+    "primary_heading": {
+      "english": "Cormorant Garamond",
+      "bangla": "Noto Serif Bengali",
+      "fallback": "serif",
+      "usage": "H1, H2, large display elements",
+      "weights": ["300", "500", "700"]
+    },
+    "body": {
+      "english": "Outfit",
+      "bangla": "Hind Siliguri",
+      "fallback": "sans-serif",
+      "usage": "Paragraphs, small labels, input text, chat bubbles",
+      "weights": ["300", "400", "500", "600"]
+    }
+  },
+  "colors": {
+    "background": {
+      "primary": "#FDFBF7",
+      "secondary": "#F3EFE6",
+      "tertiary": "#EAE5D9"
+    },
+    "text": {
+      "primary": "#1C1917",
+      "secondary": "#44403C",
+      "muted": "#78716C",
+      "inverse": "#FDFBF7"
+    },
+    "brand": {
+      "primary": "#064E3B",
+      "primary_hover": "#047857",
+      "accent": "#D4AF37",
+      "accent_hover": "#B45309"
+    },
+    "status": {
+      "success": "#166534",
+      "warning": "#CA8A04",
+      "error": "#991B1B",
+      "locked": "#D6D3D1"
+    }
+  },
+  "spacing_and_layout": {
+    "global_padding": "p-4 md:p-8 lg:p-12",
+    "container_max_width": "max-w-7xl mx-auto",
+    "border_radius": {
+      "cards": "rounded-2xl",
+      "buttons": "rounded-full",
+      "chat_bubbles": "rounded-2xl"
+    },
+    "shadows": {
+      "soft": "shadow-[0_8px_30px_rgb(0,0,0,0.04)]",
+      "floating": "shadow-[0_20px_40px_rgb(6,78,59,0.08)]"
+    }
+  },
+  "component_guidelines": {
+    "navigation": "Crystal glassmorphism (bg-white/70 backdrop-blur-xl border-b border-stone-200) with language toggle and credit balance.",
+    "language_toggle": "Pill-shaped toggle (rounded-full). Active state: bg-[#064E3B] text-[#D4AF37]. Inactive state: text-[#44403C]. Include data-testid='language-toggle'.",
+    "agent_mode_button": "A tactile switch or prominent button in the chat header. When active, glowing effect with shadow-[0_0_15px_rgba(212,175,55,0.4)] and text-[#D4AF37]. data-testid='agent-mode-toggle'.",
+    "chat_bubbles": "User bubble: bg-[#F3EFE6] text-[#1C1917], rounded-br-none. NaBaB AI bubble: bg-[#064E3B] text-[#FDFBF7], rounded-bl-none.",
+    "model_selector": "Bento-grid style cards. 'NaBaB Universe' is prominent, active (border-[#064E3B] ring-1 ring-[#D4AF37]). Locked models (GPT, Claude, Gemini) have opacity-60, grayscale filter, and a 'Coming Soon' badge in gold.",
+    "custom_credit_input": "Massive typography (text-5xl or text-6xl) with tracking-tighter, border-b-2 border-[#064E3B], bg-transparent focus:outline-none focus:border-[#D4AF37]. Price auto-calculates beside it in a muted tone.",
+    "qr_payment_modal": "Clean card (bg-[#FDFBF7]) with the QR code centered. Subtle use of bKash pink (#E2136E) or Nagad orange/red (#F7931E) ONLY on their respective logo SVGs, keeping the rest of the modal green/gold. Form inputs for transaction ID.",
+    "admin_tables": "Flat surface, no outer card shadow, just 1px border-[#EAE5D9]. Header row: bg-[#F3EFE6] text-[#44403C] uppercase tracking-wider text-xs.",
+    "buttons": "Primary CTA: bg-[#064E3B] text-[#D4AF37] hover:bg-[#047857] transition-all. Secondary CTA: border border-[#064E3B] text-[#064E3B] hover:bg-[#F3EFE6]."
+  },
+  "media": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.pexels.com/photos/14921312/pexels-photo-14921312.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Abstract green and gold marbling texture. Use as a subtle backdrop for the hero section with a heavy cream overlay (e.g., bg-[#FDFBF7]/80) so text remains fully legible."
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "instructions": "Use lucide-react for standard icons (Lock, Bot, User, Check, AlertCircle). For bKash and Nagad logos, strictly implement them as pure SVG shapes within the code to ensure high-resolution without placeholders."
+    }
+  },
+  "interactions_and_motion": {
+    "hover_states": "All buttons should have a slight translate-y-[-2px] and increased shadow. Color shifts must maintain APCA contrast.",
+    "transitions": "Use transition-all duration-300 ease-in-out globally.",
+    "loading": "Use a subtle pulsing gold dot or a sophisticated typing indicator, avoiding standard generic spinners."
+  },
+  "testing": {
+    "data_testids": [
+      "language-toggle",
+      "login-button",
+      "agent-mode-toggle",
+      "chat-input",
+      "send-message-button",
+      "model-selector-nabab",
+      "buy-credits-button",
+      "credit-amount-input",
+      "submit-transaction-button",
+      "admin-approve-button",
+      "admin-reject-button"
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Implement the UI exclusively using pure HTML/Tailwind for the landing page to achieve the bento layouts and overlapping designs.",
+    "Use Shadcn UI for the dashboard and admin panel, but override default stylings to match the Light/Luxury theme (cream backgrounds, green borders).",
+    "Never use generic placeholder URLs for images. Use the provided hero background image.",
+    "For the bKash and Nagad logos, build inline SVGs. Do not use external image links for them.",
+    "Include both 'Cormorant Garamond' (or 'Noto Serif Bengali') and 'Outfit' (or 'Hind Siliguri') via Google Fonts in the index.html or global CSS.",
+    "Ensure 'Coming Soon' models are completely disabled and inaccessible to the user."
+  ]
+}
