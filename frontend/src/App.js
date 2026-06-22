@@ -1,54 +1,95 @@
-import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { Toaster } from "sonner";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
-import { HOME } from "@/constants/testIds";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+import { AuthProvider } from "@/context/AuthContext";
+import { LangProvider } from "@/context/LangContext";
+import { AuthCallback } from "@/components/AuthCallback";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+import Landing from "@/pages/Landing";
+import Login from "@/pages/Login";
+import Chat from "@/pages/Chat";
+import BuyCredits from "@/pages/BuyCredits";
+import Dashboard from "@/pages/Dashboard";
+import Admin from "@/pages/Admin";
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+function AppRouter() {
+  const location = useLocation();
+  // CRITICAL: handle session_id in URL fragment synchronously during render
+  // This runs BEFORE any /auth/me checks to prevent race conditions
+  if (location.hash?.includes("session_id=")) {
+    return <AuthCallback />;
+  }
   return (
-    <div>
-      <header className="App-header">
-        <a
-          data-testid={HOME.emergentLink}
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Routes>
+      <Route path="/" element={<Landing />} />
+      <Route path="/login" element={<Login />} />
+      <Route
+        path="/chat"
+        element={
+          <ProtectedRoute>
+            <Chat />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/chat/:conversationId"
+        element={
+          <ProtectedRoute>
+            <Chat />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/buy"
+        element={
+          <ProtectedRoute>
+            <BuyCredits />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute adminOnly>
+            <Admin />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
-};
+}
 
 function App() {
   return (
     <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <LangProvider>
+        <AuthProvider>
+          <BrowserRouter>
+            <AppRouter />
+            <Toaster
+              position="top-center"
+              toastOptions={{
+                style: {
+                  background: "#FDFBF7",
+                  color: "#1C1917",
+                  border: "1px solid #EAE5D9",
+                  borderRadius: "12px",
+                },
+              }}
+            />
+          </BrowserRouter>
+        </AuthProvider>
+      </LangProvider>
     </div>
   );
 }
