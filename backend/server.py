@@ -1,18 +1,23 @@
 """NaBaB - AI Agent Platform for Bangladesh (Backend)"""
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Response
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File
+from fastapi.responses import JSONResponse, FileResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from datetime import datetime, timezone, timedelta
 import os
 import uuid
+import json
 import logging
 import httpx
 
 from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+from tools import TOOL_SCHEMAS, execute_tool, TOOL_CREDIT_COST, DEFAULT_TOOL_COST
+from storage import save_upload, find_file
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -146,6 +151,7 @@ class ChatSendRequest(BaseModel):
     message: str
     conversation_id: Optional[str] = None
     mode: Literal["general", "agent"] = "general"
+    attachment_ids: Optional[List[str]] = None
 
 
 class CreatePurchaseRequest(BaseModel):
@@ -319,7 +325,10 @@ async def auth_logout(request: Request, response: Response):
 
 
 # ---------- CHAT ----------
-async def _call_llm(mode: str, session_id: str, history: List[dict], user_text: str) -> str:
+async def _call_llm(mode: str, session_id: str, history: List[dict], user_text: str, attachment_summaries: Optional[List[str]] = None) -> Dict[str, Any]:
+    """Run LLM call. In agent mode, runs a tool-calling agent loop and returns:
+    { "text": final_text, "tool_events": [...], "extra_credits": int }
+    """
     if mode == "agent":
         provider, model = AGENT_PROVIDER, AGENT_MODEL
         system_message = NABAB_PERSONA + AGENT_EXTRA
@@ -327,25 +336,88 @@ async def _call_llm(mode: str, session_id: str, history: List[dict], user_text: 
         provider, model = GENERAL_PROVIDER, GENERAL_MODEL
         system_message = NABAB_PERSONA
 
+    # Build context preamble
+    if history:
+        ctx_lines = [f"{'User' if m['role']=='user' else 'NaBaB'}: {m['content']}" for m in history[-12:]]
+        context_block = "Previous conversation:\n" + "\n\n".join(ctx_lines) + "\n\n"
+    else:
+        context_block = ""
+
+    attach_block = ""
+    if attachment_summaries:
+        attach_block = "User has attached the following files (use read_file to inspect contents):\n" + "\n".join(attachment_summaries) + "\n\n"
+
+    full_text = f"{context_block}{attach_block}User: {user_text}"
+
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
         session_id=session_id,
         system_message=system_message,
     ).with_model(provider, model)
 
-    if history:
-        context = "\n\n".join(
-            [f"{'User' if m['role']=='user' else 'NaBaB'}: {m['content']}" for m in history[-12:]]
-        )
-        full_text = f"Previous conversation:\n{context}\n\nUser: {user_text}"
-    else:
-        full_text = user_text
+    # GENERAL MODE: simple text response, no tools
+    if mode != "agent":
+        msg = UserMessage(text=full_text)
+        response = await chat.send_message(msg)
+        text = response if isinstance(response, str) else getattr(response, "text", str(response))
+        return {"text": text, "tool_events": [], "extra_credits": 0}
 
-    msg = UserMessage(text=full_text)
-    response = await chat.send_message(msg)
-    if isinstance(response, str):
-        return response
-    return getattr(response, "text", str(response))
+    # AGENT MODE: tool-calling loop
+    chat = chat.with_tools(TOOL_SCHEMAS)
+    tool_events: List[Dict[str, Any]] = []
+    extra_credits = 0
+
+    response = await chat.send_message_with_tools(UserMessage(text=full_text))
+    rounds = 0
+    MAX_ROUNDS = 8
+
+    while response.tool_calls and rounds < MAX_ROUNDS:
+        rounds += 1
+        for tc in response.tool_calls:
+            tool_name = tc.name
+            tool_args = tc.arguments or {}
+            logger.info(f"[agent] tool_call: {tool_name} args={list(tool_args.keys())}")
+            result = await execute_tool(tool_name, tool_args, session_id)
+            cost = TOOL_CREDIT_COST.get(tool_name, DEFAULT_TOOL_COST)
+            extra_credits += cost
+            tool_events.append({
+                "tool": tool_name,
+                "arguments": tool_args,
+                "result_summary": _summarize_tool_result(tool_name, result),
+                "credits": cost,
+                "ok": bool(result.get("ok", False)) if isinstance(result, dict) else False,
+            })
+            # Feed result back
+            chat.add_tool_result(tc.id, json.dumps(result, ensure_ascii=False))
+        # Continue
+        response = await chat.send_message_with_tools()
+
+    final_text = response.content or ""
+    if not final_text and tool_events:
+        final_text = "(কাজ সম্পন্ন। উপরে tool থেকে ফলাফল দেখুন।)"
+
+    return {"text": final_text, "tool_events": tool_events, "extra_credits": extra_credits}
+
+
+def _summarize_tool_result(name: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact summary safe to store + return to client (avoid huge content blobs)."""
+    if not isinstance(result, dict):
+        return {"summary": str(result)[:200]}
+    if not result.get("ok", True):
+        return {"error": str(result.get("error", "unknown"))[:300]}
+    if name == "web_search":
+        return {"count": len(result.get("results", [])), "query": result.get("query", "")}
+    if name == "read_url":
+        return {"title": result.get("title", "")[:120], "url": result.get("url", ""), "chars": len(result.get("content", ""))}
+    if name == "write_file":
+        return {"file_id": result.get("file_id"), "filename": result.get("filename"), "size": result.get("size"), "download_url": result.get("download_url")}
+    if name == "read_file":
+        return {"file_id": result.get("file_id"), "filename": result.get("filename"), "chars": len(result.get("content", ""))}
+    if name == "list_files":
+        return {"count": len(result.get("files", []))}
+    if name == "execute_python":
+        return {"exit_code": result.get("exit_code"), "stdout_chars": len(result.get("stdout", "") or ""), "stderr_chars": len(result.get("stderr", "") or "")}
+    return {"summary": "ok"}
 
 
 @api_router.post("/chat/send")
@@ -411,6 +483,29 @@ async def chat_send(req: ChatSendRequest, request: Request):
     ).sort("created_at", 1).to_list(50)
     history = [{"role": m["role"], "content": m["content"]} for m in history_docs]
 
+    # Resolve attachments (if any) — verify they exist & belong to this conversation
+    attachments: List[Dict[str, Any]] = []
+    attachment_summaries: List[str] = []
+    if req.attachment_ids:
+        for fid in req.attachment_ids[:10]:
+            doc = await db.uploads.find_one({"file_id": fid, "user_id": user["user_id"]}, {"_id": 0})
+            if doc:
+                # Move/associate to this conv if not yet associated
+                if doc.get("conv_id") != conv_id:
+                    await db.uploads.update_one({"file_id": fid}, {"$set": {"conv_id": conv_id}})
+                    # Also move file on disk to conv folder
+                    from storage import UPLOAD_DIR as _UD
+                    old_path = _UD / (doc.get("conv_id") or "_pending") / f"{fid}__{doc['filename']}"
+                    new_dir = _UD / conv_id
+                    new_dir.mkdir(exist_ok=True, parents=True)
+                    new_path = new_dir / f"{fid}__{doc['filename']}"
+                    if old_path.exists() and not new_path.exists():
+                        old_path.rename(new_path)
+                attachments.append(doc)
+                attachment_summaries.append(
+                    f"- file_id={fid} filename={doc['filename']} ({doc.get('content_type','file')}, {doc.get('size',0)} bytes)"
+                )
+
     user_msg = {
         "msg_id": f"msg_{uuid.uuid4().hex[:12]}",
         "conv_id": conv_id,
@@ -418,15 +513,27 @@ async def chat_send(req: ChatSendRequest, request: Request):
         "role": "user",
         "content": req.message,
         "mode": req.mode,
+        "attachments": [{"file_id": a["file_id"], "filename": a["filename"], "is_image": a.get("is_image", False)} for a in attachments],
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.messages.insert_one(dict(user_msg))
 
     try:
-        assistant_text = await _call_llm(req.mode, conv_id, history, req.message)
+        llm_result = await _call_llm(
+            req.mode,
+            conv_id,
+            history,
+            req.message,
+            attachment_summaries=attachment_summaries if attachments else None,
+        )
+        assistant_text = llm_result["text"]
+        tool_events = llm_result["tool_events"]
+        extra_tool_credits = llm_result["extra_credits"]
     except Exception as e:
         logger.exception("LLM call failed")
         raise HTTPException(status_code=500, detail=f"AI service error: {str(e)[:200]}")
+
+    total_cost = cost + extra_tool_credits
 
     asst_msg = {
         "msg_id": f"msg_{uuid.uuid4().hex[:12]}",
@@ -435,15 +542,16 @@ async def chat_send(req: ChatSendRequest, request: Request):
         "role": "assistant",
         "content": assistant_text,
         "mode": req.mode,
-        "credits_used": cost,
+        "credits_used": total_cost,
+        "tool_events": tool_events,
         "model_label": "NaBaB Universe",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.messages.insert_one(dict(asst_msg))
 
-    if cost > 0:
+    if total_cost > 0:
         await db.users.update_one(
-            {"user_id": user["user_id"]}, {"$inc": {"credits": -cost}}
+            {"user_id": user["user_id"]}, {"$inc": {"credits": -total_cost}}
         )
 
     # Update conversation: once mode becomes 'agent', lock it
@@ -460,7 +568,8 @@ async def chat_send(req: ChatSendRequest, request: Request):
             "role": "assistant",
             "content": assistant_text,
             "model_label": "NaBaB Universe",
-            "credits_used": cost,
+            "credits_used": total_cost,
+            "tool_events": tool_events,
             "mode": req.mode,
             "created_at": asst_msg["created_at"],
         },
@@ -657,6 +766,113 @@ async def admin_stats(request: Request):
         "approved_transactions": approved,
         "total_revenue_bdt": revenue,
     }
+
+
+
+
+
+# ---------- DONE ----------
+@api_router.post("/files/upload")
+async def upload_file(request: Request, file: UploadFile = File(...)):
+    user = await require_user(request)
+    try:
+        # Use temporary "_pending" conv_id; will be moved on first chat send
+        tmp_conv = "_pending"
+        info = await save_upload(tmp_conv, file)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Upload failed")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)[:200]}")
+
+    doc = {
+        "file_id": info["file_id"],
+        "user_id": user["user_id"],
+        "conv_id": tmp_conv,
+        "filename": info["filename"],
+        "content_type": info["content_type"],
+        "size": info["size"],
+        "is_image": info["is_image"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.uploads.insert_one(dict(doc))
+    return {
+        "file_id": info["file_id"],
+        "filename": info["filename"],
+        "content_type": info["content_type"],
+        "size": info["size"],
+        "is_image": info["is_image"],
+        "url": f"/api/files/upload/{info['file_id']}",
+    }
+
+
+@api_router.get("/files/upload/{file_id}")
+async def get_upload(file_id: str, request: Request):
+    user = await require_user(request)
+    doc = await db.uploads.find_one({"file_id": file_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    path = find_file(doc["conv_id"], file_id, kind="upload")
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="File missing on disk")
+    return FileResponse(path, filename=doc["filename"], media_type=doc.get("content_type"))
+
+
+@api_router.get("/files/artifact/{conv_id}/{file_id}")
+async def get_artifact(conv_id: str, file_id: str, request: Request):
+    user = await require_user(request)
+    conv = await db.conversations.find_one({"conv_id": conv_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    path = find_file(conv_id, file_id, kind="artifact")
+    if not path or not path.exists():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    # Filename is after __
+    fname = path.name.split("__", 1)[-1]
+    return FileResponse(path, filename=fname, media_type="application/octet-stream")
+
+
+@api_router.get("/files/conversation/{conv_id}")
+async def list_conversation_files(conv_id: str, request: Request):
+    user = await require_user(request)
+    conv = await db.conversations.find_one({"conv_id": conv_id, "user_id": user["user_id"]}, {"_id": 0})
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    uploads = await db.uploads.find(
+        {"user_id": user["user_id"], "conv_id": conv_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    # Artifacts (from filesystem)
+    from storage import ARTIFACT_DIR
+    art_dir = ARTIFACT_DIR / conv_id
+    artifacts = []
+    if art_dir.exists():
+        for p in art_dir.iterdir():
+            if not p.is_file():
+                continue
+            parts = p.name.split("__", 1)
+            if len(parts) == 2:
+                fid, fname = parts
+                artifacts.append({
+                    "file_id": fid,
+                    "filename": fname,
+                    "size": p.stat().st_size,
+                    "url": f"/api/files/artifact/{conv_id}/{fid}",
+                })
+    return {"uploads": uploads, "artifacts": artifacts}
+
+
+# ---------- AGENT TOOLS INFO ----------
+@api_router.get("/agent/tools")
+async def list_agent_tools():
+    """List of tools available in Agent Mode with their credit costs."""
+    return [
+        {
+            "name": t["function"]["name"],
+            "description": t["function"]["description"],
+            "credits": TOOL_CREDIT_COST.get(t["function"]["name"], DEFAULT_TOOL_COST),
+        }
+        for t in TOOL_SCHEMAS
+    ]
 
 
 app.include_router(api_router)
