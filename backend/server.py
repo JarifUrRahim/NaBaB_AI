@@ -41,13 +41,72 @@ app.add_middleware(
 
 # Constants
 CREDIT_PER_BDT = 1
-COST_GENERAL = 3
-COST_AGENT = 8
+COST_GENERAL = 0   # General chat is FREE (Gemini free tier via Emergent key)
+COST_AGENT_BASE = 8  # Base cost per message in agent mode (Phase A)
+# Phase B/C tool costs (defined but not yet used):
+COST_AGENT_TOOL = 10        # per tool call
+COST_AGENT_CODE_RUN = 15    # per minute of sandbox
+COST_AGENT_DEPLOY = 30      # per deployment
+
+# Free chat daily limit (to prevent abuse)
+FREE_CHAT_DAILY_LIMIT = 100
+
+WELCOME_BONUS_CREDITS = 50
 
 GENERAL_PROVIDER = "gemini"
-GENERAL_MODEL = "gemini-3-flash-preview"
+GENERAL_MODEL = "gemini-2.5-flash"
 AGENT_PROVIDER = "anthropic"
 AGENT_MODEL = "claude-sonnet-4-5-20250929"
+
+# Bangladesh-aware persona (the "training" via prompt engineering)
+NABAB_PERSONA = """You are NaBaB Universe (নবাব ইউনিভার্স) — a culturally-aware AI built specifically for Bangladeshi users by a Bangladeshi team.
+
+LANGUAGE & VOICE:
+- You speak fluent Bangla (Bengali) and English with equal fluency. Detect and match the user's language: pure Bangla → reply in pure Bangla; English → English; mixed (Banglish) → reply naturally mixed like real Bangladeshis do.
+- Use respectful address: "আপনি" by default. Use "তুমি/তুই" only if user is clearly casual or addressing as a child/younger person.
+- Warm, knowledgeable, and trustworthy — like a polymath bhaiya/apu who happens to know everything.
+
+BANGLADESH-NATIVE KNOWLEDGE (use this wisely):
+- Education: NCTB curriculum, SSC/HSC, ভর্তি পরীক্ষা (DU, BUET, RUET, KUET, CUET, MIST, JU, RU, CU, JnU, NSU, BRACU, AIUB, IUB, EWU, NU, BIBM, IBA, BCS, primary teacher recruitment), tutoring trends
+- Career & Work: BCS cadre service, banking (BB, Sonali, Janata, Agrani, Islami, City, Dutch-Bangla, BRAC, EBL, Prime, Mutual Trust), private sector, RMG industry, freelancing (Upwork, Fiverr, payoneer/wise withdrawal), startup ecosystem
+- Daily life: বিকাশ, নগদ, রকেট, উপায়; Pathao, Foodpanda, Daraz, Chaldal, Shohoz; local food, festivals (পহেলা বৈশাখ, ঈদ, পূজা, বিজয় দিবস, স্বাধীনতা দিবস), ক্রিকেট
+- Geography: ৮ বিভাগ, ৬৪ জেলা; ঢাকা, চট্টগ্রাম, খুলনা, রাজশাহী, সিলেট, বরিশাল, রংপুর, ময়মনসিংহ
+- Currency: ALWAYS quote prices in BDT (৳/টাকা), never just $ alone
+
+TARGET AUDIENCE — how you help:
+1. STUDENTS (school → university):
+   - Homework, exam prep, assignment help in Bangla AND English
+   - ভর্তি পরীক্ষা প্রস্তুতি, BCS-এর জন্য বাংলা/ইংরেজি/সাধারণ জ্ঞান, BCS math tricks
+   - Project ideas, code help, English improvement, presentation prep
+2. TEACHERS:
+   - NCTB-aligned lesson plans, prashno-potro (question paper), MCQ design, classroom activities
+   - Edtech & digital tools advice
+3. PROFESSIONALS:
+   - Business writing (Bangla + English), email drafting, CV/cover letter, freelancing proposals
+   - Domain queries (RMG, banking, IT, agri, healthcare), market research
+   - Tax/VAT basics (refer to NBR for actuals)
+4. GENERAL USERS:
+   - রান্না, ভ্রমণ, স্বাস্থ্য পরামর্শ (with medical disclaimer), legal info (with disclaimer), পারিবারিক সমস্যা
+
+TONE RULES (CRITICAL):
+- Confident but humble. Never bluntly say "I don't know" — say: "এটা আমার নিশ্চিতভাবে জানা নেই, তবে যা জানি…" or "I'm not 100% sure, but here's what I know…"
+- Cite Bangladeshi examples wherever possible (not foreign-only)
+- Use বাংলা সংখ্যা (০১২৩৪৫৬৭৮৯) inside pure Bangla text; English numerals in English text
+- Format with headers/bullets for clarity
+- For sensitive topics (health/legal/finance), recommend consulting a professional but still give useful starting info
+- Be culturally sensitive (religion, politics — be balanced, respectful)
+
+You are NOT "just another ChatGPT/Gemini" — you are নবাব, built by Bangladeshis for Bangladeshis. Carry that pride. Make every Bangladeshi user — student, teacher, professional — feel they finally have an AI that GETS them."""
+
+AGENT_EXTRA = """
+
+[AGENT MODE ACTIVE — Premium Tier]
+The user has activated Agent Mode and is paying credits per message. They expect deeper, structured, comprehensive help:
+- Plan multi-step solutions clearly
+- Provide COMPLETE code (not partial snippets) when asked
+- Show reasoning when it helps the user learn
+- Suggest next steps and related improvements
+- You will soon have tools (file ops, code execution, web search, deployment) — for now operate as a senior expert advisor giving production-grade output."""
 
 DEFAULT_PAYMENT_METHODS = [
     {
@@ -126,7 +185,7 @@ async def get_settings_doc():
         doc = {
             "payment_methods": DEFAULT_PAYMENT_METHODS,
             "credit_cost_general": COST_GENERAL,
-            "credit_cost_agent": COST_AGENT,
+            "credit_cost_agent": COST_AGENT_BASE,
             "credit_per_bdt": CREDIT_PER_BDT,
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -209,7 +268,7 @@ async def auth_session(request: Request, response: Response):
             "email": email,
             "name": name,
             "picture": picture,
-            "credits": 25,
+            "credits": WELCOME_BONUS_CREDITS,
             "is_admin": is_admin,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -263,19 +322,10 @@ async def auth_logout(request: Request, response: Response):
 async def _call_llm(mode: str, session_id: str, history: List[dict], user_text: str) -> str:
     if mode == "agent":
         provider, model = AGENT_PROVIDER, AGENT_MODEL
-        system_message = (
-            "You are NaBaB Universe — a premium agentic AI built for Bangladeshi users. "
-            "You speak fluent Bangla and English. In agent mode, plan carefully, think step-by-step, "
-            "and deliver thorough, high-quality output. Match the user's language. "
-            "Be culturally aware of Bangladesh context."
-        )
+        system_message = NABAB_PERSONA + AGENT_EXTRA
     else:
         provider, model = GENERAL_PROVIDER, GENERAL_MODEL
-        system_message = (
-            "You are NaBaB Universe — a friendly AI assistant for Bangladeshi users. "
-            "You speak fluent Bangla and English. Match the user's language. "
-            "Be warm, concise, and helpful."
-        )
+        system_message = NABAB_PERSONA
 
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
@@ -302,22 +352,47 @@ async def _call_llm(mode: str, session_id: str, history: List[dict], user_text: 
 async def chat_send(req: ChatSendRequest, request: Request):
     user = await require_user(request)
 
-    settings = await get_settings_doc()
-    cost = settings["credit_cost_agent"] if req.mode == "agent" else settings["credit_cost_general"]
-    if user["credits"] < cost:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits. This {req.mode} message requires {cost} credits.",
-        )
-
+    # Load existing conversation (if any) for agent-mode lock check
     conv_id = req.conversation_id
+    conv = None
     if conv_id:
         conv = await db.conversations.find_one(
             {"conv_id": conv_id, "user_id": user["user_id"]}, {"_id": 0}
         )
         if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        # AGENT-MODE LOCK: once a conversation is in agent mode, all subsequent messages are agent mode
+        if conv.get("mode") == "agent":
+            req.mode = "agent"
+
+    # Determine cost
+    if req.mode == "agent":
+        cost = COST_AGENT_BASE
+        if user["credits"] < cost:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Insufficient credits. Agent message requires {cost} credits.",
+            )
     else:
+        # General chat is FREE — but enforce daily limit to prevent abuse
+        cost = 0
+        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        today_count = await db.messages.count_documents(
+            {
+                "user_id": user["user_id"],
+                "role": "user",
+                "mode": "general",
+                "created_at": {"$gte": today_start},
+            }
+        )
+        if today_count >= FREE_CHAT_DAILY_LIMIT:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily free chat limit ({FREE_CHAT_DAILY_LIMIT}) reached. Activate Agent Mode for unlimited usage.",
+            )
+
+    # Create conversation if needed
+    if not conv:
         conv_id = f"conv_{uuid.uuid4().hex[:12]}"
         title = req.message[:50] + ("..." if len(req.message) > 50 else "")
         conv = {
@@ -325,6 +400,7 @@ async def chat_send(req: ChatSendRequest, request: Request):
             "user_id": user["user_id"],
             "title": title,
             "mode": req.mode,
+            "agent_locked": req.mode == "agent",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -365,13 +441,16 @@ async def chat_send(req: ChatSendRequest, request: Request):
     }
     await db.messages.insert_one(dict(asst_msg))
 
-    await db.users.update_one(
-        {"user_id": user["user_id"]}, {"$inc": {"credits": -cost}}
-    )
-    await db.conversations.update_one(
-        {"conv_id": conv_id},
-        {"$set": {"updated_at": datetime.now(timezone.utc).isoformat(), "mode": req.mode}},
-    )
+    if cost > 0:
+        await db.users.update_one(
+            {"user_id": user["user_id"]}, {"$inc": {"credits": -cost}}
+        )
+
+    # Update conversation: once mode becomes 'agent', lock it
+    update_doc = {"updated_at": datetime.now(timezone.utc).isoformat(), "mode": req.mode}
+    if req.mode == "agent":
+        update_doc["agent_locked"] = True
+    await db.conversations.update_one({"conv_id": conv_id}, {"$set": update_doc})
 
     updated_user = await db.users.find_one({"user_id": user["user_id"]}, {"_id": 0})
     return {
@@ -386,6 +465,8 @@ async def chat_send(req: ChatSendRequest, request: Request):
             "created_at": asst_msg["created_at"],
         },
         "credits_remaining": updated_user["credits"],
+        "agent_locked": req.mode == "agent",
+        "free_chat_remaining": (FREE_CHAT_DAILY_LIMIT - today_count - 1) if req.mode == "general" else None,
     }
 
 
@@ -434,13 +515,19 @@ async def credits_pricing():
     settings = await get_settings_doc()
     return {
         "credit_per_bdt": settings["credit_per_bdt"],
-        "credit_cost_general": settings["credit_cost_general"],
-        "credit_cost_agent": settings["credit_cost_agent"],
+        "credit_cost_general": COST_GENERAL,
+        "credit_cost_agent": COST_AGENT_BASE,
+        "credit_cost_tool": COST_AGENT_TOOL,
+        "credit_cost_code_run": COST_AGENT_CODE_RUN,
+        "credit_cost_deploy": COST_AGENT_DEPLOY,
+        "free_chat_daily_limit": FREE_CHAT_DAILY_LIMIT,
+        "welcome_bonus": WELCOME_BONUS_CREDITS,
         "presets": [
             {"bdt": 100, "credits": 100, "bonus": 0, "label_bn": "শুরু", "label_en": "Starter"},
-            {"bdt": 200, "credits": 220, "bonus": 20, "label_bn": "জনপ্রিয়", "label_en": "Popular"},
-            {"bdt": 300, "credits": 350, "bonus": 50, "label_bn": "অগ্রসর", "label_en": "Advanced"},
-            {"bdt": 500, "credits": 600, "bonus": 100, "label_bn": "নবাব", "label_en": "Nabab"},
+            {"bdt": 300, "credits": 320, "bonus": 20, "label_bn": "জনপ্রিয়", "label_en": "Popular"},
+            {"bdt": 500, "credits": 560, "bonus": 60, "label_bn": "অগ্রসর", "label_en": "Advanced"},
+            {"bdt": 1000, "credits": 1200, "bonus": 200, "label_bn": "প্রিমিয়াম", "label_en": "Premium"},
+            {"bdt": 2000, "credits": 2500, "bonus": 500, "label_bn": "নবাব", "label_en": "Nabab"},
         ],
     }
 

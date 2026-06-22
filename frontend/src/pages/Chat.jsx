@@ -30,11 +30,13 @@ export default function Chat() {
   const [currentConvId, setCurrentConvId] = useState(conversationId || null);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState("general");
+  const [agentLocked, setAgentLocked] = useState(false);
+  const [freeRemaining, setFreeRemaining] = useState(null);
   const [sending, setSending] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const costGeneral = 3;
+  const costGeneral = 0;
   const costAgent = 8;
   const cost = mode === "agent" ? costAgent : costGeneral;
 
@@ -50,12 +52,17 @@ export default function Chat() {
   const loadMessages = async (id) => {
     if (!id) {
       setMessages([]);
+      setAgentLocked(false);
+      setMode("general");
       return;
     }
     try {
       const { data } = await api.get(`/chat/conversations/${id}/messages`);
       setMessages(data.messages || []);
-      setMode(data.conversation?.mode || "general");
+      const convMode = data.conversation?.mode || "general";
+      const locked = data.conversation?.agent_locked || convMode === "agent";
+      setMode(convMode);
+      setAgentLocked(locked);
     } catch (e) {
       console.error(e);
     }
@@ -77,6 +84,9 @@ export default function Chat() {
   const startNewChat = () => {
     setCurrentConvId(null);
     setMessages([]);
+    setAgentLocked(false);
+    setMode("general");
+    setFreeRemaining(null);
     navigate("/chat");
     setSidebarOpen(false);
   };
@@ -98,9 +108,18 @@ export default function Chat() {
     }
   };
 
+  const toggleAgentMode = () => {
+    if (agentLocked) return; // can't unlock
+    if (mode === "general") {
+      // Activating agent — confirm
+      if (!window.confirm(t("agent_activation_confirm"))) return;
+      setMode("agent");
+    }
+  };
+
   const sendMessage = async () => {
     if (!input.trim() || sending) return;
-    if ((user?.credits ?? 0) < cost) {
+    if (mode === "agent" && (user?.credits ?? 0) < cost) {
       toast.error(t("insufficient_credits"));
       return;
     }
@@ -134,6 +153,10 @@ export default function Chat() {
         loadConvs();
       }
       setMessages((m) => [...m, data.message]);
+      if (data.agent_locked) setAgentLocked(true);
+      if (data.free_chat_remaining !== null && data.free_chat_remaining !== undefined) {
+        setFreeRemaining(data.free_chat_remaining);
+      }
       await refresh();
     } catch (e) {
       const detail = e?.response?.data?.detail || "Failed to send";
@@ -206,23 +229,32 @@ export default function Chat() {
                   {t("nabab_universe")}
                 </p>
                 <p className="text-[10px] uppercase tracking-widest text-foreground/50 mt-1">
-                  {mode === "agent" ? t("agent_activated") : t("general_mode")} · {cost} {t("credits")}{t("cost_per_message")}
+                  {mode === "agent" ? (
+                    <>
+                      {t("agent_activated")} · {cost} {t("credits")}{t("cost_per_message")}
+                    </>
+                  ) : (
+                    <>
+                      {t("general_mode")} · <span className="text-emerald font-semibold">{t("free_label")}</span>
+                    </>
+                  )}
                 </p>
               </div>
             </div>
 
             {/* Agent mode toggle */}
             <button
-              onClick={() => setMode((m) => (m === "agent" ? "general" : "agent"))}
+              onClick={toggleAgentMode}
+              disabled={agentLocked}
               className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-all duration-300 ${
                 mode === "agent"
-                  ? "bg-gold text-emerald shadow-gold-glow"
-                  : "bg-cream-2 text-foreground/60 hover:bg-cream-3"
-              }`}
+                  ? "bg-gold text-emerald shadow-gold-glow cursor-default"
+                  : "bg-cream-2 text-foreground/60 hover:bg-emerald hover:text-gold"
+              } ${agentLocked ? "cursor-default" : ""}`}
               data-testid="agent-mode-toggle"
-              title={mode === "agent" ? t("agent_activated") : t("agent_mode")}
+              title={agentLocked ? t("agent_locked_notice") : t("agent_mode")}
             >
-              <Bot className="w-3.5 h-3.5" />
+              {mode === "agent" ? <Lock className="w-3 h-3" /> : <Bot className="w-3.5 h-3.5" />}
               {mode === "agent" ? t("agent_activated") : t("agent_mode")}
             </button>
           </div>
@@ -312,7 +344,13 @@ export default function Chat() {
 
           {/* Composer */}
           <div className="border-t border-cream-3 px-4 md:px-6 py-4 bg-cream">
-            {(user?.credits ?? 0) < cost && (
+            {agentLocked && (
+              <div className="mb-3 flex items-center gap-2 rounded-2xl bg-gold/10 border border-gold/30 px-3 py-2">
+                <Lock className="w-3.5 h-3.5 text-gold" />
+                <span className="text-xs text-foreground/70">{t("agent_locked_notice")}</span>
+              </div>
+            )}
+            {mode === "agent" && (user?.credits ?? 0) < cost && (
               <div className="mb-3 flex items-center justify-between rounded-2xl bg-cream-2 border border-cream-3 px-4 py-2.5">
                 <span className="text-xs flex items-center gap-2 text-foreground/70">
                   <Lock className="w-3.5 h-3.5 text-foreground/40" />
@@ -345,7 +383,7 @@ export default function Chat() {
               />
               <button
                 onClick={sendMessage}
-                disabled={sending || !input.trim() || (user?.credits ?? 0) < cost}
+                disabled={sending || !input.trim() || (mode === "agent" && (user?.credits ?? 0) < cost)}
                 className="rounded-full bg-emerald text-gold p-3 hover:bg-emerald-hover transition-all disabled:opacity-40 disabled:cursor-not-allowed hover:-translate-y-0.5 shadow-luxe"
                 data-testid="send-message-button"
               >
@@ -354,7 +392,19 @@ export default function Chat() {
             </div>
             <div className="flex items-center justify-between mt-2 px-1">
               <span className="text-[10px] text-foreground/40 flex items-center gap-1">
-                <Coins className="w-3 h-3 text-gold" /> {cost} {t("credits")}{t("cost_per_message")}
+                {mode === "agent" ? (
+                  <>
+                    <Coins className="w-3 h-3 text-gold" /> {cost} {t("credits")}{t("cost_per_message")}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3 h-3 text-emerald" />
+                    <span className="text-emerald font-semibold">{t("free_label")}</span>
+                    {freeRemaining !== null && (
+                      <span>· {freeRemaining} {t("free_chat_remaining")}</span>
+                    )}
+                  </>
+                )}
               </span>
               <span className="text-[10px] text-foreground/40">
                 {lang === "bn" ? "শিফট+এন্টার = নতুন লাইন" : "Shift+Enter for new line"}

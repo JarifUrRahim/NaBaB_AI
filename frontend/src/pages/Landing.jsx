@@ -86,11 +86,11 @@ export default function Landing() {
               <div className="flex flex-wrap items-center gap-x-6 gap-y-3 pt-4">
                 <div className="flex items-center gap-2 text-foreground/60 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald" />
-                  <span>{lang === "bn" ? "২৫ ফ্রি ক্রেডিট" : "25 Free Credits"}</span>
+                  <span>{lang === "bn" ? "ফ্রি চ্যাট আনলিমিটেড" : "Unlimited Free Chat"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-foreground/60 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald" />
-                  <span>{lang === "bn" ? "বাংলা সাপোর্ট" : "Bangla Native"}</span>
+                  <span>{lang === "bn" ? "৫০ ফ্রি ক্রেডিট" : "50 Free Credits"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-foreground/60 text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald" />
@@ -247,7 +247,7 @@ export default function Landing() {
             <p className="text-foreground/60">{t("pricing_sub")}</p>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
             {(pricing?.presets || []).map((p, i) => {
               const featured = i === 1;
               return (
@@ -323,8 +323,8 @@ export default function Landing() {
             </h2>
             <p className="text-cream/70 max-w-xl mx-auto mb-8">
               {lang === "bn"
-                ? "প্রথম সাইন আপে ২৫টি ফ্রি ক্রেডিট। কোনো কার্ড লাগবে না।"
-                : "Get 25 free credits when you sign up. No card required."}
+                ? "প্রথম সাইন আপে ৫০টি ফ্রি ক্রেডিট + আনলিমিটেড ফ্রি চ্যাট। কোনো কার্ড লাগবে না।"
+                : "Get 50 free credits + unlimited free chat on sign up. No card required."}
             </p>
             <Link
               to="/login"

@@ -99,7 +99,7 @@ export default function BuyCredits() {
         </div>
 
         {/* Presets */}
-        <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 mb-8">
           {(pricing?.presets || []).map((p, i) => (
             <button
               key={p.bdt}
