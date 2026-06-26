@@ -1,16 +1,34 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="bn">
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#064E3B" />
+    <meta name="background-color" content="#FDFBF7" />
     <meta
       name="description"
-      content="NaBaB — বাঙ্গালী বাবা, দেবেন সেবা। AI Agent Platform for Bangladesh."
+      content="NaBaB — বাঙ্গালী বাবা, দেবেন সেবা। Bangladesh's first AI agentic platform with bKash payment, Bangla support, and tool-using agent."
     />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+
+    <!-- PWA -->
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="NaBaB" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="NaBaB" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="NaBaB — Bangladesh's AI Agentic Platform" />
+    <meta property="og:description" content="বাঙ্গালী বাবা, দেবেন সেবা। Free chat, Agent Mode, bKash payments." />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+    <meta property="og:type" content="website" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="NaBaB — Bangladesh's AI Agentic Platform" />
+    <meta name="twitter:image" content="%PUBLIC_URL%/og-image.png" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,7 +40,22 @@
     <title>NaBaB — বাঙ্গালী বাবা, দেবেন সেবা</title>
   </head>
   <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <noscript>You need to enable JavaScript to run NaBaB.</noscript>
     <div id="root"></div>
+    <script>
+      // Service Worker registration for PWA
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("/service-worker.js")
+            .then(function (reg) {
+              console.log("[NaBaB] PWA service worker registered:", reg.scope);
+            })
+            .catch(function (err) {
+              console.warn("[NaBaB] Service worker registration failed:", err);
+            });
+        });
+      }
+    </script>
   </body>
 </html>
