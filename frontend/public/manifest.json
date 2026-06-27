@@ -1,7 +1,8 @@
 {
+  "id": "/?source=pwa",
   "short_name": "NaBaB",
-  "name": "NaBaB — বাঙ্গালী বাবা, দেবেন সেবা",
-  "description": "Bangladesh's first AI agentic platform. Free chat, agent mode with tools, bKash/Upay credit payments.",
+  "name": "NaBaB — Bengali AI Agent",
+  "description": "Bangladesh's first AI agentic platform. Free Bangla chat, Agent Mode with web search and code execution, bKash/Upay credit payments. Built for students, teachers, and professionals.",
   "icons": [
     { "src": "favicon.ico", "sizes": "32x32 48x48", "type": "image/x-icon" },
     { "src": "icon-72.png", "sizes": "72x72", "type": "image/png" },
@@ -16,29 +17,75 @@
     { "src": "maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
     { "src": "maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
-  "start_url": ".",
-  "scope": ".",
+  "screenshots": [
+    {
+      "src": "screenshot-mobile-1.png",
+      "sizes": "540x1080",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Free chat with NaBaB Universe in Bangla"
+    },
+    {
+      "src": "screenshot-mobile-2.png",
+      "sizes": "540x1080",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Agent Mode with tools — web search, code execution"
+    },
+    {
+      "src": "screenshot-mobile-3.png",
+      "sizes": "540x1080",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Buy credits via bKash, Upay or UCB Bank"
+    },
+    {
+      "src": "screenshot-wide-1.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "NaBaB landing — Bangladesh's first AI agentic platform"
+    }
+  ],
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
   "orientation": "portrait-primary",
   "theme_color": "#064E3B",
   "background_color": "#FDFBF7",
-  "lang": "bn",
+  "lang": "bn-BD",
   "dir": "ltr",
-  "categories": ["productivity", "education", "business"],
+  "categories": ["productivity", "education", "business", "utilities"],
+  "iarc_rating_id": "",
+  "prefer_related_applications": false,
   "shortcuts": [
     {
       "name": "Free Chat",
       "short_name": "Chat",
-      "description": "Start a free chat with NaBaB",
+      "description": "Start a free Bangla chat with NaBaB",
       "url": "/chat",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Buy Credits",
       "short_name": "Credits",
-      "description": "Recharge your NaBaB credits",
+      "description": "Recharge your NaBaB credits via bKash",
       "url": "/buy",
-      "icons": [{ "src": "icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Dashboard",
+      "short_name": "Dash",
+      "description": "View your usage and balance",
+      "url": "/dashboard",
+      "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
     }
-  ]
+  ],
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
+  "launch_handler": {
+    "client_mode": ["navigate-existing", "auto"]
+  }
 }
