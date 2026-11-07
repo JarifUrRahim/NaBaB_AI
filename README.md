@@ -10,7 +10,7 @@ This public repository contains an early-stage prototype/architecture demo with 
 
 The project is an early prototype; the complete platform is not deployed. The repository does not establish that its philosophical filter reliably detects misalignment or prevents unsafe actions. No independent efficacy study, security audit, or peer-reviewed validation is claimed here. Testing notes in the repository should be read at their stated status and not treated as an independent completed assessment.
 
-The earlier README linked a test demo at `https://gkm.jarifurrahim.one/`. Its availability could not be confirmed during this review, so verify the link before describing it as live.
+No independently verified, currently live NaBaB AI deployment is linked in this README. The separate Genuine Knowledge Mining news demo is not a NaBaB AI deployment.
 
 ## Author and identity references
 
